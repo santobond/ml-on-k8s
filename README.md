@@ -62,8 +62,75 @@ curl -X POST localhost:8080/predict -H "Content-Type: application/json" -d "[5.1
   pod before the model has finished loading.
 - Resource requests/limits prevent a single replica from starving cluster resources.
 
+## Model serving with KServe
+
+In addition to the hand-written Deployment/Service approach above, this project also
+serves the same model through **KServe** — a Kubernetes-native model serving platform —
+to compare a manual deployment against a managed inference framework.
+
+### KServe architecture
+
+```
+model.joblib → PersistentVolumeClaim (model-store)
+→ InferenceService (KServe CRD)
+→ Knative Revision + Istio ingress gateway
+→ standard KServe inference protocol (/v1/models/<name>:predict)
+```
+
+### Setup
+
+```bash
+# Install KServe (RawDeployment/Knative quickstart, for local kind clusters)
+curl -s "https://raw.githubusercontent.com/kserve/kserve/release-0.15/hack/quick_install.sh" | bash
+
+# Create a PVC and copy the trained model into it
+kubectl apply -f k8s/model-pvc.yaml
+kubectl apply -f k8s/copy-pod.yaml
+kubectl cp model.joblib copy-helper:/mnt/models/model.joblib
+kubectl delete pod copy-helper   # free the PVC for the InferenceService
+
+# Deploy the model via KServe
+kubectl apply -f k8s/my-model-inference-service.yaml
+kubectl get inferenceservice my-iris-model
+```
+
+### Testing
+
+```bash
+kubectl port-forward -n istio-system svc/istio-ingressgateway 8082:80
+
+curl -H "Host: my-iris-model.default.example.com" \
+  -H "Content-Type: application/json" \
+  http://localhost:8082/v1/models/my-iris-model:predict \
+  -d '{"instances": [[5.1, 3.5, 1.4, 0.2]]}'
+```
+
+### Manual deployment vs. KServe
+
+| | Manual (Deployment/Service) | KServe |
+|---|---|---|
+| Code required | Dockerfile, Deployment, Service YAML | 5-line InferenceService YAML |
+| Model packaging | Custom FastAPI wrapper | Automatic, framework-standard |
+| Traffic routing | ClusterIP Service | Istio ingress gateway |
+| API contract | Custom (`/predict`) | Standard (`instances`/`predictions`) |
+| Autoscaling | Not configured | Built-in (Knative-based) |
+
+### Issues encountered and resolved
+
+- **PVC lock contention**: the InferenceService pod couldn't schedule while a helper
+  pod used to copy the model file still held the PVC (`ReadWriteOnce`). Resolved by
+  deleting the helper pod once the copy completed.
+- **Node memory exhaustion**: running the full KServe/Knative/Istio stack alongside
+  the earlier demo and an extra example InferenceService exceeded the local kind
+  node's memory, causing `FailedScheduling`. Resolved by removing unused resources
+  and increasing Docker Desktop's memory allocation.
+- **Content-Type mismatch**: a prediction request initially failed with a confusing
+  `nan` array error; the root cause was curl defaulting to
+  `application/x-www-form-urlencoded` instead of JSON. Fixed by explicitly setting
+  `Content-Type: application/json`.
+
 ## Next steps
 
-- [ ] Serve via KServe for autoscaling and standardized `InferenceService` API
+- [x] Serve via KServe for autoscaling and standardized `InferenceService` API
 - [ ] Add GPU-backed inference for a larger model
 - [ ] Add a RAG pipeline with an in-cluster vector database
