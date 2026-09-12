@@ -13,11 +13,7 @@ End-to-end ML model deployment on Kubernetes — containerized inference service
 
 ## Architecture
 
-```
-train.py → model.joblib → app.py (FastAPI) → Docker image
-→ Kubernetes Deployment (2 replicas, readiness probe, resource limits)
-→ Kubernetes Service (ClusterIP)
-```
+![Architecture diagram](architecture.svg)
 
 ## Stack
 
