@@ -1,7 +1,6 @@
-# ML on Kubernetes — Demo Project
+# ML Model Serving on Kubernetes
 
-A minimal end-to-end example of deploying a machine learning model on Kubernetes,
-built as a learning project combining Kubernetes administration with MLOps fundamentals.
+End-to-end ML model deployment on Kubernetes — containerized inference service with health checks, autoscaling-ready architecture, and automated self-healing via Kubernetes Deployments.
 
 ## What this project demonstrates
 
